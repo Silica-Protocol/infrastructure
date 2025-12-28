@@ -1,0 +1,72 @@
+# Multi-stage build for Silica blockchain node
+# Following Rust security best practices with minimal attack surface
+
+# Build stage
+FROM rust:1.82-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    musl-dev \
+    pkgconfig \
+    openssl-dev \
+    clang \
+    cmake \
+    make \
+    protobuf-dev \
+    && rm -rf /var/cache/apk/*
+
+# Create app user for security
+RUN addgroup -g 1001 -S silica && \
+    adduser -u 1001 -S silica -G silica
+
+WORKDIR /src
+
+# Copy dependency files first for layer caching
+COPY Cargo.toml Cargo.lock ./
+COPY .cargo/ .cargo/
+
+# Copy workspace members
+COPY silica-models/ silica-models/
+COPY miner/ miner/
+COPY poi/ poi/
+COPY silica/ silica/
+
+# Disable sccache for container builds
+RUN echo '# [build]\n# rustc-wrapper = "sccache"' > .cargo/config.toml
+
+# Build the silica binary with optimizations and security hardening
+RUN RUSTFLAGS="-C target-feature=+crt-static -C link-self-contained=yes" \
+    cargo build --release --package silica --target x86_64-unknown-linux-musl
+
+# Verify binary
+RUN file target/x86_64-unknown-linux-musl/release/silica && \
+    ldd target/x86_64-unknown-linux-musl/release/silica || true
+
+# Runtime stage - minimal distroless for security
+FROM gcr.io/distroless/static-debian12:nonroot
+
+# Metadata
+LABEL maintainer="Chert Core Team"
+LABEL description="Silica blockchain node"
+LABEL version="0.1.0"
+
+# Copy the binary from builder
+COPY --from=builder /src/target/x86_64-unknown-linux-musl/release/silica /usr/local/bin/silica
+
+# Create data directory with proper permissions
+USER 65532:65532
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD ["/usr/local/bin/silica", "--help"]
+
+# Default configuration
+VOLUME ["/data"]
+WORKDIR /data
+
+# Expose default ports
+EXPOSE 8545 30300
+
+# Default command
+ENTRYPOINT ["/usr/local/bin/silica"]
+CMD ["dev-node", "--data-dir", "/data"]

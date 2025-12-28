@@ -1,0 +1,39 @@
+.terraform/               
+**/.terraform/            
+.terraform/*              
+.terraform.lock.hcl       
+terraform.tfstate         
+terraform.tfstate.backup  
+*.tfstate.*               
+crash.log                 
+
+# Log files and directories
+**/*.log*
+**/logs/
+logs/
+observability/local/logs/
+
+# Terraform variable files that may contain secrets
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+
+# Terraform and provider caches
+*.hcl.lock
+
+# Local CLI config that may contain credentials
+.terraformrc
+terraform.rc
+
+# Editor and IDE files
+.vscode/
+.idea/
+
+# Swap/temp files
+*.swp
+*~
+
+# OS generated files
+.DS_Store
+Thumbs.db

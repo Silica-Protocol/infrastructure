@@ -1,0 +1,24 @@
+---
+# Resource adjustments for testnet environment
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: silica-validator
+spec:
+  template:
+    spec:
+      containers:
+      - name: silica
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2000m"
+            ephemeral-storage: "2Gi"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+            ephemeral-storage: "5Gi"
+      # Remove node selector for testnet (can run on any node)
+      nodeSelector: {}
+      # Remove tolerations for testnet
+      tolerations: []

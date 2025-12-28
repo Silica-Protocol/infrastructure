@@ -1,0 +1,100 @@
+{
+  "timestamp": "2025-12-23T00:00:00Z",
+  "chain_id": "silica-testnet-1",
+  "system_accounts": {
+    "treasury": {
+      "label": "Treasury",
+      "address": "treasury_000000000000000000000000",
+      "balance": 1000000000000000
+    },
+    "rewards_pool": {
+      "label": "Rewards Pool",
+      "address": "rewards_00000000000000000000000000",
+      "balance": 500000000000000
+    },
+    "developer_fund": {
+      "label": "Developer Fund",
+      "address": "devfund_000000000000000000000000",
+      "balance": 100000000000000
+    },
+    "governance": {
+      "label": "Governance",
+      "address": "governance00000000000000000000",
+      "balance": 10000000000000
+    }
+  },
+  "validators": [
+    {
+      "address": "validator-0-testnet-00000000000000",
+      "stake": 10000000000000,
+      "public_key": "REPLACE_WITH_VALIDATOR_0_PUBKEY",
+      "network_address": "testnet-silica-validator-0.testnet-silica-validator-headless.chert-testnet.svc.cluster.local:30300"
+    },
+    {
+      "address": "validator-1-testnet-00000000000000",
+      "stake": 10000000000000,
+      "public_key": "REPLACE_WITH_VALIDATOR_1_PUBKEY",
+      "network_address": "testnet-silica-validator-1.testnet-silica-validator-headless.chert-testnet.svc.cluster.local:30300"
+    },
+    {
+      "address": "validator-2-testnet-00000000000000",
+      "stake": 10000000000000,
+      "public_key": "REPLACE_WITH_VALIDATOR_2_PUBKEY",
+      "network_address": "testnet-silica-validator-2.testnet-silica-validator-headless.chert-testnet.svc.cluster.local:30300"
+    },
+    {
+      "address": "validator-3-testnet-00000000000000",
+      "stake": 10000000000000,
+      "public_key": "REPLACE_WITH_VALIDATOR_3_PUBKEY",
+      "network_address": "testnet-silica-validator-3.testnet-silica-validator-headless.chert-testnet.svc.cluster.local:30300"
+    }
+  ],
+  "bootstrap_accounts": [
+    {
+      "label": "Testnet Faucet",
+      "address": "faucet_0000000000000000000000000",
+      "balance": 100000000000000
+    },
+    {
+      "label": "Test Account 1",
+      "address": "test1_00000000000000000000000000",
+      "balance": 10000000000
+    },
+    {
+      "label": "Test Account 2",
+      "address": "test2_00000000000000000000000000",
+      "balance": 10000000000
+    }
+  ],
+  "network_params": {
+    "consensus_params": {
+      "max_validators_per_shard": 100,
+      "min_validator_stake": 1000000000000,
+      "view_timeout_ms": 5000,
+      "target_block_time_ms": 3000,
+      "finality_threshold": 67
+    },
+    "economic_params": {
+      "validator_reward_percentage": 40,
+      "useful_work_reward_percentage": 30,
+      "network_reward_percentage": 20,
+      "developer_fund_percentage": 10,
+      "slash_percentage": 1000,
+      "minimum_stake": 1000000000000
+    },
+    "execution_params": {
+      "max_gas_per_block": 50000000,
+      "gas_price_minimum": 1,
+      "max_wasm_memory_pages": 512,
+      "max_execution_time_ms": 10000
+    },
+    "security_params": {
+      "max_peers_per_node": 50,
+      "network_timeout_ms": 30000,
+      "verification_threshold": 0.8,
+      "emergency_pause_enabled": true
+    },
+    "last_updated": 1734912000,
+    "version": 1
+  }
+}

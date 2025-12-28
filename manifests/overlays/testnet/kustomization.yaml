@@ -1,0 +1,40 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: chert-testnet
+
+resources:
+- ../../base
+
+namespace: chert-testnet
+
+namePrefix: testnet-
+
+commonLabels:
+  environment: testnet
+  tier: testing
+
+images:
+- name: ghcr.io/dedme/chert/silica
+  newTag: testnet-latest
+
+replicas:
+- name: silica-validator
+  count: 4
+
+patchesStrategicMerge:
+- validator-patch.yaml
+- resources-patch.yaml
+
+configMapGenerator:
+- name: silica-testnet-config
+  behavior: merge
+  files:
+  - config/testnet-validator.toml
+- name: testnet-genesis
+  files:
+  - genesis.json=config/testnet-genesis.json
+
+generatorOptions:
+  disableNameSuffixHash: true

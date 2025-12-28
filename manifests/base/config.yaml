@@ -1,0 +1,66 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: silica-validator-config
+  labels:
+    app: silica
+    component: validator
+data:
+  validator.toml: |
+    # Silica Validator Configuration
+    # This configuration is managed by Kubernetes ConfigMap
+    
+    # Network configuration
+    [network]
+    listen_addr = "0.0.0.0:30300"
+    external_addr = "0.0.0.0:30300"
+    max_peers = 50
+    bootstrap_peers = []
+    
+    # Consensus configuration
+    [consensus]
+    enabled = true
+    timeout_ms = 1500
+    max_transactions_per_block = 1000
+    
+    # Storage configuration
+    [storage]
+    data_dir = "/data"
+    rocksdb_options = { max_open_files = 1000 }
+    
+    # API configuration
+    [api]
+    listen_addr = "0.0.0.0:8545"
+    cors_origins = ["*"]
+    max_request_size = "10MB"
+    
+    # Security configuration
+    [security]
+    consensus_private_key_path = "/keys/consensus_keypair.json"
+    network_private_key_path = "/keys/network_keypair.json"
+    
+    # Logging configuration
+    [logging]
+    level = "info"
+    format = "json"
+    
+    # Metrics configuration
+    [metrics]
+    enabled = true
+    listen_addr = "0.0.0.0:8545"
+    path = "/metrics"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: silica-validator-keys
+  labels:
+    app: silica
+    component: validator
+type: Opaque
+data:
+  # These keys should be generated and base64 encoded
+  # Use: echo -n 'key_content' | base64
+  consensus_keypair.json: LS0tLS1CRUdJTiBTSUxJQ0EgS0VZLS0tLS0KIyBUaGlzIGlzIGEgcGxhY2Vob2xkZXIgLSByZXBsYWNlIHdpdGggYWN0dWFsIGdlbmVyYXRlZCBrZXlzCi0tLS0tRU5EIFNJTElDQSBLRVktLS0tLQo=
+  network_keypair.json: LS0tLS1CRUdJTiBTSUxJQ0EgS0VZLS0tLS0KIyBUaGlzIGlzIGEgcGxhY2Vob2xkZXIgLSByZXBsYWNlIHdpdGggYWN0dWFsIGdlbmVyYXRlZCBrZXlzCi0tLS0tRU5EIFNJTElDQSBLRVktLS0tLQo=

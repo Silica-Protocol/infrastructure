@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  # Silica API server exposes Prometheus text at /metrics/prometheus.
+  # For multi-node local dev, run each node with a different API listen port.
+  - job_name: silica
+    metrics_path: /metrics/prometheus
+    static_configs:
+      - targets:
+          - host.docker.internal:8545
+          # - host.docker.internal:8546
+          # - host.docker.internal:8547
+        labels:
+          env: local

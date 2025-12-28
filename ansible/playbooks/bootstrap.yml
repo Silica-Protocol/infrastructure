@@ -1,0 +1,103 @@
+---
+# Main bootstrap playbook for Chert blockchain infrastructure
+# Provisions and configures nodes for validator and worker roles
+- name: Bootstrap Chert Blockchain Infrastructure
+  hosts: all
+  become: yes
+  gather_facts: yes
+  vars_files:
+    - ../group_vars/all.yml
+    - "../group_vars/{{ ansible_hostname }}.yml"
+  
+  pre_tasks:
+    - name: Update package cache
+      package:
+        update_cache: yes
+      when: ansible_os_family in ['Debian', 'RedHat']
+
+    - name: Verify system requirements
+      assert:
+        that:
+          - ansible_memtotal_mb >= 2048
+          - ansible_processor_vcpus >= 2
+        fail_msg: "System does not meet minimum requirements (2GB RAM, 2 CPU cores)"
+
+  roles:
+    - role: common
+      tags: [common, base]
+    
+    - role: security
+      tags: [security, hardening]
+    
+    - role: docker
+      tags: [docker, containers]
+      when: container_runtime == 'docker'
+    
+    - role: containerd
+      tags: [containerd, containers]
+      when: container_runtime == 'containerd'
+    
+    - role: kubernetes
+      tags: [kubernetes, k8s]
+      when: "'kubernetes' in group_names"
+    
+    - role: silica-node
+      tags: [silica, blockchain]
+      when: "'validators' in group_names or 'workers' in group_names"
+    
+    - role: monitoring
+      tags: [monitoring, observability]
+      when: enable_monitoring | default(true)
+    
+    - role: backup
+      tags: [backup, data-protection]
+      when: enable_backup | default(true)
+
+  post_tasks:
+    - name: Verify node is healthy
+      uri:
+        url: "http://localhost:{{ silica_api_port | default(8545) }}/health"
+        method: GET
+        timeout: 30
+      register: health_check
+      until: health_check.status == 200
+      retries: 5
+      delay: 10
+      when: "'validators' in group_names or 'workers' in group_names"
+
+    - name: Display deployment summary
+      debug:
+        msg: |
+          Deployment completed successfully!
+          Node type: {{ node_type | default('unknown') }}
+          Network: {{ network_name | default('testnet') }}
+          Environment: {{ environment | default('development') }}
+          Health check: {{ 'PASSED' if health_check.status == 200 else 'FAILED' }}
+
+- name: Configure Load Balancer
+  hosts: load_balancers
+  become: yes
+  gather_facts: yes
+  vars_files:
+    - ../group_vars/all.yml
+  
+  roles:
+    - role: load-balancer
+      tags: [load-balancer, networking]
+
+- name: Configure Monitoring Stack
+  hosts: monitoring
+  become: yes
+  gather_facts: yes
+  vars_files:
+    - ../group_vars/all.yml
+  
+  roles:
+    - role: prometheus
+      tags: [prometheus, monitoring]
+    
+    - role: grafana
+      tags: [grafana, monitoring]
+    
+    - role: alertmanager
+      tags: [alertmanager, monitoring]

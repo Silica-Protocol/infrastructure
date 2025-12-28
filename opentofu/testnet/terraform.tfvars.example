@@ -1,0 +1,75 @@
+# ============================================================================
+# Testnet Variables
+# ============================================================================
+
+# General
+environment  = "testnet"
+project_name = "silica"
+domain_name  = "silica.network"  # Change to your domain
+
+# ============================================================================
+# Oracle Cloud (FREE - 4 ARM instances)
+# ============================================================================
+# Sign up: https://www.oracle.com/cloud/free/
+# 
+# Always Free includes:
+# - 4 ARM Ampere A1 instances (24GB RAM, 4 OCPUs total)
+# - 200GB block storage
+# - 10TB/month outbound data transfer
+# - Object storage, load balancer, and more
+#
+# Get these values from Oracle Cloud Console:
+# 1. Go to Profile -> Tenancy
+# 2. Copy OCID for tenancy
+# 3. Go to Profile -> User Settings
+# 4. Copy OCID for user
+# 5. Generate API Key and copy fingerprint
+# ============================================================================
+
+oci_tenancy_ocid     = "ocid1.tenancy.oc1..your-tenancy-ocid"
+oci_user_ocid        = "ocid1.user.oc1..your-user-ocid"
+oci_fingerprint      = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
+oci_private_key_path = "~/.oci/oci_api_key.pem"
+oci_region           = "us-phoenix-1"  # Phoenix, Arizona (USA West)
+
+# ============================================================================
+# Hetzner Cloud (~€16/month for 4 nodes)
+# ============================================================================
+# Sign up: https://www.hetzner.com/cloud
+#
+# CX22 specs: 2 vCPU, 4GB RAM, 40GB NVMe, 20TB traffic
+# Price: €4.15/month each
+#
+# Get API token from:
+# Cloud Console -> Security -> API Tokens -> Generate Token
+# ============================================================================
+
+hcloud_token = "your-hetzner-api-token"
+
+# ============================================================================
+# AWS (Free Tier - supporting services)
+# ============================================================================
+# Only used for Route53/S3 if needed
+# Can be omitted if using Cloudflare for DNS
+
+aws_region = "us-west-2"
+
+# ============================================================================
+# Cloudflare (FREE)
+# ============================================================================
+# Sign up: https://cloudflare.com
+#
+# Free includes:
+# - DNS hosting
+# - DDoS protection
+# - SSL certificates
+# - CDN (if proxied)
+#
+# Get these from Cloudflare dashboard:
+# 1. Go to your domain -> Overview
+# 2. Copy Zone ID from right sidebar
+# 3. Go to Profile -> API Tokens -> Create Token
+# ============================================================================
+
+cloudflare_api_token = "your-cloudflare-api-token"
+cloudflare_zone_id   = "your-zone-id"  # Leave empty if not using Cloudflare DNS

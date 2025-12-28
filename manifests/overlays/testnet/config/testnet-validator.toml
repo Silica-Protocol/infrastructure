@@ -1,0 +1,88 @@
+# Silica Testnet Validator Configuration
+# This file is mounted into the container at /config/testnet-validator.toml
+
+node_id = "${HOSTNAME}"
+role = "Validator"
+storage_path = "/data/storage"
+node_keypair_path = "/keys/node_keypair.key"
+api_listen_addr = "0.0.0.0:8545"
+
+[network]
+node_id = "${HOSTNAME}"
+listen_addr = "/ip4/0.0.0.0/udp/30300/quic-v1"
+# Bootstrap peers - these should be the other validators
+bootstrap_peers = [
+    "/dns4/testnet-silica-validator-0.testnet-silica-validator-headless.chert-testnet.svc.cluster.local/udp/30300/quic-v1",
+    "/dns4/testnet-silica-validator-1.testnet-silica-validator-headless.chert-testnet.svc.cluster.local/udp/30300/quic-v1",
+    "/dns4/testnet-silica-validator-2.testnet-silica-validator-headless.chert-testnet.svc.cluster.local/udp/30300/quic-v1",
+    "/dns4/testnet-silica-validator-3.testnet-silica-validator-headless.chert-testnet.svc.cluster.local/udp/30300/quic-v1",
+]
+max_peers = 50
+protocol = "Quic"
+chain_id = 13371
+network_id = "silica-testnet-1"
+is_validator = true
+
+[network.quic_config]
+max_concurrent_streams = 200
+keep_alive_interval_ms = 5000
+connection_idle_timeout_ms = 30000
+max_connection_attempts = 5
+connection_timeout_secs = 10
+
+[network.gossip_config]
+heartbeat_interval_ms = 1000
+max_transmit_size = 2097152
+duplicate_cache_time_ms = 60000
+
+[network.discovery]
+[network.discovery.mdns]
+service_name = "_silica-testnet._udp.local"
+query_interval_ms = 5000
+
+[network.discovery.peer_exchange]
+request_interval_ms = 10000
+max_neighbors_per_request = 8
+max_peers_per_response = 16
+
+[consensus]
+shard_id = 0
+view_timeout_ms = 5000
+max_batch_size = 1000
+target_block_time_ms = 3000
+validator_keypair_path = "/keys/consensus_keypair.json"
+
+[execution]
+max_gas_per_block = 50000000
+gas_price_minimum = 1
+max_parallel_lanes = 8
+max_lane_depth = 2048
+
+[execution.wasm_config]
+max_memory_pages = 512
+max_execution_time_ms = 10000
+enable_wasi = true
+max_gas_per_transaction = 10000000
+min_gas_price_base_units = 1
+cu_per_gas = 100
+
+[execution.hot_partitioning]
+enabled = true
+partitions_per_account = 8
+partition_strategy = "ByHash"
+
+[staking]
+minimum_stake = 1000000000
+maximum_validators_per_shard = 100
+slash_percentage = 1000
+
+[staking.reward_distribution]
+validators_percentage = 40
+useful_work_percentage = 30
+network_contributors_percentage = 20
+developer_fund_percentage = 10
+
+[useful_work]
+enabled = false
+supported_projects = []
+verification_threshold = 0.95
