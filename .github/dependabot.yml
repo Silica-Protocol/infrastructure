@@ -1,0 +1,40 @@
+version: 2
+updates:
+  # Terraform/OpenTofu
+  - package-ecosystem: "terraform"
+    directory: "/terraform"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "infrastructure"
+      - "terraform"
+
+  - package-ecosystem: "terraform"
+    directory: "/opentofu"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "infrastructure"
+      - "opentofu"
+
+  # Docker
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "ci"
