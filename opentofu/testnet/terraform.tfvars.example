@@ -7,6 +7,13 @@ environment  = "testnet"
 project_name = "silica"
 domain_name  = "silica.network"  # Change to your domain
 
+# SSH public key used to access nodes
+ssh_public_key_path = "~/.ssh/id_ed25519.pub"
+
+# Optional providers
+enable_hetzner        = false
+enable_cloudflare_dns = false
+
 # ============================================================================
 # Oracle Cloud (FREE - 4 ARM instances)
 # ============================================================================

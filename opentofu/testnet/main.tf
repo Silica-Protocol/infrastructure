@@ -73,6 +73,24 @@ variable "project_name" {
   default     = "silica"
 }
 
+variable "ssh_public_key_path" {
+  description = "Path to the SSH public key to authorize on nodes"
+  type        = string
+  default     = "~/.ssh/id_ed25519.pub"
+}
+
+variable "enable_hetzner" {
+  description = "Whether to provision Hetzner validator nodes"
+  type        = bool
+  default     = false
+}
+
+variable "enable_cloudflare_dns" {
+  description = "Whether to create Cloudflare DNS records"
+  type        = bool
+  default     = false
+}
+
 # Oracle Cloud Variables
 variable "oci_tenancy_ocid" {
   description = "Oracle Cloud tenancy OCID"
@@ -151,18 +169,29 @@ locals {
   # AUS-proxy nodes: Hetzner (Helsinki/Falkenstein) - €4/each
   # Note: Hetzner doesn't have AUS DC, but EU is closer than US-East
   
-  validator_nodes = {
-    # Oracle Cloud Free Tier - USA (4 nodes)
-    "validator-0" = { provider = "oracle", region = "us-phoenix-1", zone = "AD-1" }
-    "validator-1" = { provider = "oracle", region = "us-phoenix-1", zone = "AD-2" }
-    "validator-2" = { provider = "oracle", region = "us-phoenix-1", zone = "AD-3" }
-    "validator-3" = { provider = "oracle", region = "us-ashburn-1", zone = "AD-1" }
-    
-    # Hetzner Cloud - EU (closer to AUS than US-West) (4 nodes)
-    "validator-4" = { provider = "hetzner", location = "hel1" }  # Helsinki
-    "validator-5" = { provider = "hetzner", location = "hel1" }
-    "validator-6" = { provider = "hetzner", location = "fsn1" }  # Falkenstein
-    "validator-7" = { provider = "hetzner", location = "fsn1" }
+  validator_nodes = merge(
+    {
+      # Oracle Cloud Free Tier - 4 nodes in the selected OCI region
+      "validator-0" = { provider = "oracle", zone = "AD-1" }
+      "validator-1" = { provider = "oracle", zone = "AD-2" }
+      "validator-2" = { provider = "oracle", zone = "AD-3" }
+      "validator-3" = { provider = "oracle", zone = "AD-1" }
+    },
+    var.enable_hetzner ? {
+      # Hetzner Cloud - optional paid nodes
+      "validator-4" = { provider = "hetzner", location = "hel1" } # Helsinki
+      "validator-5" = { provider = "hetzner", location = "hel1" }
+      "validator-6" = { provider = "hetzner", location = "fsn1" } # Falkenstein
+      "validator-7" = { provider = "hetzner", location = "fsn1" }
+    } : {}
+  )
+
+  ssh_public_key = file(pathexpand(var.ssh_public_key_path))
+
+  oci_ad_index_by_label = {
+    "AD-1" = 0
+    "AD-2" = 1
+    "AD-3" = 2
   }
 }
 
@@ -310,7 +339,9 @@ resource "oci_core_instance" "validators" {
   }
 
   compartment_id      = oci_identity_compartment.silica.id
-  availability_domain = data.oci_identity_availability_domains.ads.availability_domains[0].name
+  availability_domain = data.oci_identity_availability_domains.ads.availability_domains[
+    lookup(local.oci_ad_index_by_label, each.value.zone, 0)
+  ].name
   display_name        = "${local.name_prefix}-${each.key}"
   
   shape = "VM.Standard.A1.Flex" # ARM Ampere - FREE TIER
@@ -332,12 +363,13 @@ resource "oci_core_instance" "validators" {
   }
 
   metadata = {
-    ssh_authorized_keys = file("~/.ssh/id_rsa.pub")
+    ssh_authorized_keys = local.ssh_public_key
     user_data = base64encode(templatefile("${path.module}/templates/cloud-init.yaml", {
       node_name    = each.key
       node_index   = index(keys(local.validator_nodes), each.key)
       environment  = var.environment
       domain       = var.domain_name
+      ssh_public_key = local.ssh_public_key
     }))
   }
 
@@ -369,7 +401,7 @@ data "oci_identity_availability_domains" "ads" {
 # SSH Key for Hetzner
 resource "hcloud_ssh_key" "default" {
   name       = "${local.name_prefix}-ssh"
-  public_key = file("~/.ssh/id_rsa.pub")
+  public_key = local.ssh_public_key
 }
 
 # Firewall for Hetzner validators
@@ -430,6 +462,7 @@ resource "hcloud_server" "validators" {
     node_index   = index(keys(local.validator_nodes), each.key)
     environment  = var.environment
     domain       = var.domain_name
+    ssh_public_key = local.ssh_public_key
   })
 
   labels = local.common_tags
@@ -448,10 +481,10 @@ resource "hcloud_server" "validators" {
 # ============================================================================
 
 resource "cloudflare_record" "validators" {
-  for_each = merge(
+  for_each = (var.enable_cloudflare_dns && var.cloudflare_zone_id != "") ? merge(
     { for k, v in oci_core_instance.validators : k => v.public_ip },
     { for k, v in hcloud_server.validators : k => v.ipv4_address }
-  )
+  ) : {}
 
   zone_id = var.cloudflare_zone_id
   name    = "${each.key}.${var.environment}"
@@ -463,7 +496,7 @@ resource "cloudflare_record" "validators" {
 
 # API endpoint (load balanced via Cloudflare)
 resource "cloudflare_record" "api" {
-  count = var.cloudflare_zone_id != "" ? 1 : 0
+  count = (var.enable_cloudflare_dns && var.cloudflare_zone_id != "") ? 1 : 0
   
   zone_id = var.cloudflare_zone_id
   name    = "api.${var.environment}"

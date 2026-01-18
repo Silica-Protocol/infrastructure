@@ -1,0 +1,250 @@
+#cloud-config
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - docker.io
+  - docker-compose
+  - curl
+  - jq
+  - htop
+  - iotop
+  - net-tools
+  - fail2ban
+  - ufw
+  - openssl
+
+users:
+  - name: silica
+    groups: docker, sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+
+write_files:
+  - path: /etc/silica/keystore.env
+    permissions: '0600'
+    owner: root:root
+    content: |
+      # Managed by cloud-init. Keep this file secret.
+      SILICA_KEYSTORE_PASSWORD=
+
+  - path: /opt/silica/config/validator.toml
+    content: |
+      node_id = "${node_name}"
+      role = "Validator"
+      storage_path = "/data/storage"
+      node_keypair_path = "/data/keys/node_keypair.key"
+      api_listen_addr = "0.0.0.0:8545"
+
+      [network]
+      node_id = "${node_name}"
+      listen_addr = "/ip4/0.0.0.0/udp/30300/quic-v1"
+      bootstrap_peers = []
+      max_peers = 50
+      protocol = "Quic"
+      chain_id = 13371
+      network_id = "silica-${environment}"
+      is_validator = true
+
+      [network.quic_config]
+      max_concurrent_streams = 100
+      keep_alive_interval_ms = 30000
+      connection_idle_timeout_ms = 300000
+      max_connection_attempts = 3
+      connection_timeout_secs = 10
+
+      [network.gossip_config]
+      heartbeat_interval_ms = 1000
+      max_transmit_size = 1048576
+      duplicate_cache_time_ms = 60000
+
+      # DNS-based peer discovery - resolves testnet.silicaprotocol.network to find other validators
+      [network.discovery]
+      [network.discovery.dns]
+      records = ["testnet.silicaprotocol.network"]
+      refresh_interval_ms = 60000
+      default_port = 30300
+
+      [network.discovery.peer_exchange]
+      request_interval_ms = 10000
+      max_neighbors_per_request = 8
+      max_peers_per_response = 16
+
+      [consensus]
+      shard_id = 0
+      view_timeout_ms = 5000
+      max_batch_size = 1000
+      target_block_time_ms = 3000
+      validator_keypair_path = "/data/keys/consensus_keypair.json"
+
+      [execution]
+      max_gas_per_block = 10000000
+      gas_price_minimum = 1
+      max_parallel_lanes = 8
+      max_lane_depth = 1024
+      max_access_list_entries = 512
+      mvcc_cache_capacity = 65536
+      hot_account_partition_threshold = 64
+
+      [execution.wasm_config]
+      max_memory_pages = 1024
+      max_execution_time_ms = 5000
+      enable_wasi = true
+      max_gas_per_transaction = 5000000
+      min_gas_price_base_units = 1
+      cu_per_gas = 100
+
+      [execution.hot_partitioning]
+      enabled = false
+      partitions_per_account = 4
+      partition_strategy = "ByHash"
+
+      [staking]
+      minimum_stake = 1000000000
+      maximum_validators_per_shard = 96
+      slash_percentage = 500
+
+      [staking.reward_distribution]
+      validators_percentage = 40
+      useful_work_percentage = 45
+      network_contributors_percentage = 10
+      developer_fund_percentage = 5
+
+      [useful_work]
+      enabled = true
+      supported_projects = ["folding_at_home", "boinc"]
+      verification_threshold = 0.8
+
+      [useful_work.reward_multipliers]
+      folding_at_home = 1.0
+      boinc = 1.2
+
+  - path: /opt/silica/docker-compose.yml
+    content: |
+      version: '3.8'
+      services:
+        validator:
+          image: ${container_image}
+          container_name: silica-validator
+          restart: unless-stopped
+          command: ["validator", "--config", "/config/validator.toml"]
+          ports:
+            - "8545:8545"
+            - "30300:30300/tcp"
+            - "30300:30300/udp"
+          volumes:
+            - ./config:/config:ro
+            - ./data:/data
+          environment:
+            - RUST_LOG=info
+            - RUST_BACKTRACE=1
+            - SILICA_KEYSTORE_PASSWORD=$${SILICA_KEYSTORE_PASSWORD}
+          healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:8545/health"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 180s
+
+  - path: /etc/systemd/system/silica.service
+    content: |
+      [Unit]
+      Description=Silica Validator Node
+      After=docker.service
+      Wants=docker.service
+
+      [Service]
+      Type=simple
+      EnvironmentFile=/etc/silica/keystore.env
+      WorkingDirectory=/opt/silica
+      ExecStart=/usr/bin/docker-compose up
+      ExecStop=/usr/bin/docker-compose down
+      Restart=always
+      RestartSec=10
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /opt/silica/setup-firewall.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -e
+
+      ufw default deny incoming
+      ufw default allow outgoing
+
+      ufw limit 22/tcp
+      ufw allow 8545/tcp
+      ufw allow 30300/tcp
+      ufw allow 30300/udp
+
+      ufw --force enable
+
+runcmd:
+  - mkdir -p /etc/silica
+  - mkdir -p /opt/silica/{data,config}
+  - mkdir -p /opt/silica/data/{keys,storage}
+  # Set ownership to UID 1000 (silica user inside container)
+  - chown -R 1000:1000 /opt/silica/data
+  - chown -R silica:silica /opt/silica/config
+  - chmod -R 755 /opt/silica/data
+  - /opt/silica/setup-firewall.sh
+  - systemctl enable fail2ban
+  - systemctl start fail2ban
+
+  - systemctl enable --now docker
+
+  - |
+    set -euo pipefail
+    if ! command -v docker-compose >/dev/null 2>&1; then
+      apt-get update
+      apt-get install -y docker-compose
+    fi
+
+  - docker pull ${container_image}
+
+  # Ensure keystore password exists (required by the node)
+  - |
+    set -euo pipefail
+    if ! grep -q '^SILICA_KEYSTORE_PASSWORD=' /etc/silica/keystore.env; then
+      echo 'SILICA_KEYSTORE_PASSWORD=' >> /etc/silica/keystore.env
+    fi
+    current="$(grep '^SILICA_KEYSTORE_PASSWORD=' /etc/silica/keystore.env | head -n1 | cut -d= -f2- || true)"
+    if [ -z "$current" ]; then
+      pw="$(openssl rand -hex 32)"
+      tmp="$(mktemp)"
+      awk -v pw="$pw" 'BEGIN{done=0} { if ($0 ~ /^SILICA_KEYSTORE_PASSWORD=/ && done==0) { print "SILICA_KEYSTORE_PASSWORD=" pw; done=1 } else { print $0 } } END{ if (done==0) print "SILICA_KEYSTORE_PASSWORD=" pw }' /etc/silica/keystore.env > "$tmp"
+      install -m 0600 -o root -g root "$tmp" /etc/silica/keystore.env
+      rm -f "$tmp"
+    fi
+
+  # Generate consensus/network keys if missing (stored under /data/keys)
+  - |
+    set -euo pipefail
+    if [ ! -f /opt/silica/data/keys/consensus_keypair.json ]; then
+      docker run --rm \
+        -v /opt/silica/data/keys:/out \
+        ${container_image} \
+        generate-keys --output /out
+    fi
+
+  - systemctl daemon-reload
+  - systemctl enable silica
+  - systemctl restart silica
+
+  - echo "Silica node ${node_name} (index ${node_index}) initialized" >> /var/log/silica-init.log
+  - echo "Keys: /opt/silica/data/keys (consensus_keypair.json)" >> /var/log/silica-init.log
+  - echo "Service: systemctl status silica" >> /var/log/silica-init.log
+
+final_message: |
+  Silica validator node ${node_name} setup complete!
+
+  The node auto-generates keys and starts the service.
+
+  Useful commands:
+  1. Status: sudo systemctl status silica
+  2. Logs: sudo docker logs -f silica-validator
