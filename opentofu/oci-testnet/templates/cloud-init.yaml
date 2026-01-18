@@ -141,6 +141,8 @@ write_files:
           environment:
             - RUST_LOG=info
             - RUST_BACKTRACE=1
+            - SILICA_NETWORK_MODE=testnet
+            - SILICA_VALIDATOR_INDEX=${node_index}
             - SILICA_KEYSTORE_PASSWORD=$${SILICA_KEYSTORE_PASSWORD}
           healthcheck:
             test: ["CMD", "curl", "-f", "http://localhost:8545/health"]
@@ -222,15 +224,10 @@ runcmd:
       rm -f "$tmp"
     fi
 
-  # Generate consensus/network keys if missing (stored under /data/keys)
-  - |
-    set -euo pipefail
-    if [ ! -f /opt/silica/data/keys/consensus_keypair.json ]; then
-      docker run --rm \
-        -v /opt/silica/data/keys:/out \
-        ${container_image} \
-        generate-keys --output /out
-    fi
+  # NOTE: Do not pre-generate consensus keys here.
+  # Validators derive deterministic genesis keypairs based on SILICA_VALIDATOR_INDEX when
+  # /data/keys/consensus_keypair.json is missing. Pre-generating keys would create mismatched
+  # identities and prevent the committee from forming.
 
   - systemctl daemon-reload
   - systemctl enable silica

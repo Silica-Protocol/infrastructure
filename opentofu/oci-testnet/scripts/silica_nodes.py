@@ -193,14 +193,19 @@ def cmd_logs(nodes: List[Node], user: str, node: str) -> None:
     selected = next((n for n in nodes if n.name == node), None)
     if selected is None:
         raise RuntimeError(f"Unknown node '{node}'. Use `list` to see names.")
-    # streaming logs: run ssh directly (do not capture)
+    # Streaming logs: prefer docker-compose logs (more robust than assuming a container exists).
+    # If docker-compose isn't available or the service isn't running yet, fall back to docker logs.
+    primary = "cd /opt/silica && sudo docker-compose logs -f --tail=200 validator"
+    fallback = "sudo docker logs -f silica-validator"
+    remote_cmd = f"{primary} || ({fallback})"
+
     subprocess.run(
         [
             "ssh",
             "-o",
             "StrictHostKeyChecking=accept-new",
             f"{user}@{selected.public_ip}",
-            "sudo docker logs -f silica-validator",
+            remote_cmd,
         ],
         check=False,
     )
@@ -256,6 +261,119 @@ def cmd_set_image(nodes: List[Node], user: str, image: str) -> None:
         )
         ssh_run(user, n.public_ip, f"sudo docker pull {image}")
         ssh_run(user, n.public_ip, "sudo systemctl restart silica")
+
+
+def _validator_index_from_name(node_name: str) -> int:
+    """Extract validator index from node name like 'validator-0'."""
+    parts = node_name.split("-")
+    if len(parts) < 2:
+        raise RuntimeError(f"Cannot parse validator index from node name: {node_name}")
+    try:
+        return int(parts[-1])
+    except ValueError as e:
+        raise RuntimeError(f"Cannot parse validator index from node name: {node_name}") from e
+
+
+def cmd_push_genesis(nodes: List[Node], user: str, genesis_file: Path) -> None:
+    if not genesis_file.exists():
+        raise RuntimeError(f"Genesis file not found: {genesis_file}")
+
+    for n in nodes:
+        print(f"==> pushing genesis -> {n.name} ({n.public_ip})")
+        ssh_run(user, n.public_ip, "sudo mkdir -p /opt/silica/data/storage && sudo chown -R 1000:1000 /opt/silica/data")
+        tmp_remote = f"/home/{user}/genesis.json"
+        scp_put(user, n.public_ip, genesis_file, tmp_remote)
+        ssh_run(
+            user,
+            n.public_ip,
+            "sudo mv /home/" + user + "/genesis.json /opt/silica/data/storage/genesis.json && sudo chown 1000:1000 /opt/silica/data/storage/genesis.json",
+        )
+        ssh_run(user, n.public_ip, "sudo systemctl restart silica")
+
+
+def cmd_set_bootstrap_peers(nodes: List[Node], user: str, port: int) -> None:
+    if port <= 0 or port > 65535:
+        raise RuntimeError("port must be in 1..65535")
+
+    # Build a multiaddr list for each node based on current tofu outputs
+    node_addrs = {n.name: f"/ip4/{n.public_ip}/udp/{port}/quic-v1" for n in nodes}
+
+    for n in nodes:
+        peers = [addr for name, addr in node_addrs.items() if name != n.name]
+        print(f"==> configuring bootstrap peers for {n.name} ({n.public_ip})")
+        peers_py = "[" + ", ".join(repr(p) for p in peers) + "]"
+        remote = f"""
+set -euo pipefail
+
+cfg=/opt/silica/config/validator.toml
+sudo test -f "$cfg"
+
+python3 - <<'PY'
+import json
+import re
+
+cfg = "/opt/silica/config/validator.toml"
+peers = {peers_py}
+
+with open(cfg, "r", encoding="utf-8") as f:
+    text = f.read()
+
+pattern = re.compile(r"(?m)^(?P<indent>\\s*)bootstrap_peers\\s*=\\s*\\[[^\\]]*\\]\\s*$")
+
+def repl(m):
+    indent = m.group("indent")
+    peers_toml = ", ".join(json.dumps(x) for x in peers)
+    return indent + "bootstrap_peers = [" + peers_toml + "]"
+
+new_text, n = pattern.subn(repl, text)
+if n == 0:
+    raise SystemExit("bootstrap_peers line not found in validator.toml")
+
+tmp = "/tmp/validator.toml"
+with open(tmp, "w", encoding="utf-8") as f:
+    f.write(new_text)
+PY
+
+sudo mv /tmp/validator.toml "$cfg"
+sudo systemctl restart silica
+"""
+        ssh_run(user, n.public_ip, remote)
+
+
+def cmd_reset_consensus_key(nodes: List[Node], user: str) -> None:
+    for n in nodes:
+        idx = _validator_index_from_name(n.name)
+        print(f"==> resetting consensus key for {n.name} ({n.public_ip}) [index {idx}]")
+        # Ensure SILICA_VALIDATOR_INDEX is set in docker-compose.yml so the node regenerates
+        # deterministic genesis keys when the file is missing.
+        remote = f"""
+set -euo pipefail
+cd /opt/silica
+
+sudo test -f docker-compose.yml
+
+# Ensure env vars exist in compose file (assumes default template indentation)
+if ! sudo grep -q 'SILICA_NETWORK_MODE=' docker-compose.yml; then
+    sudo sed -i '/- RUST_BACKTRACE=1/a            - SILICA_NETWORK_MODE=testnet' docker-compose.yml
+fi
+
+if sudo grep -q 'SILICA_VALIDATOR_INDEX=' docker-compose.yml; then
+    sudo sed -i 's/^\(\s*-\s*SILICA_VALIDATOR_INDEX=\).*/\1{idx}/' docker-compose.yml
+else
+    # Insert index after network mode line if present, else after backtrace.
+    if sudo grep -q 'SILICA_NETWORK_MODE=testnet' docker-compose.yml; then
+        sudo sed -i '/SILICA_NETWORK_MODE=testnet/a            - SILICA_VALIDATOR_INDEX={idx}' docker-compose.yml
+    else
+        sudo sed -i '/- RUST_BACKTRACE=1/a            - SILICA_VALIDATOR_INDEX={idx}' docker-compose.yml
+    fi
+fi
+
+# Remove the existing key so silica can regenerate deterministically
+sudo rm -f /opt/silica/data/keys/consensus_keypair.json
+
+sudo systemctl restart silica
+"""
+        ssh_run(user, n.public_ip, remote)
 
 
 def cmd_update(nodes: List[Node], user: str, tag: str, force: bool) -> None:
@@ -317,6 +435,14 @@ def main() -> int:
     p_set_image = sub.add_parser("set-image", help="Update /opt/silica/docker-compose.yml to use a new image, then pull + restart")
     p_set_image.add_argument("--image", required=True, help="Container image reference (e.g. ghcr.io/owner/repo:latest)")
 
+    p_push_genesis = sub.add_parser("push-genesis", help="Copy a shared genesis.json to all nodes (stored at /opt/silica/data/storage/genesis.json) and restart")
+    p_push_genesis.add_argument("--file", required=True, help="Path to genesis.json on your local machine")
+
+    p_bootstrap = sub.add_parser("set-bootstrap-peers", help="Set network.bootstrap_peers in /opt/silica/config/validator.toml using current tofu public IPs, then restart")
+    p_bootstrap.add_argument("--port", type=int, default=30300, help="UDP port for QUIC listen (default: 30300)")
+
+    sub.add_parser("reset-consensus-key", help="Delete consensus_keypair.json on each node so it is regenerated deterministically using SILICA_VALIDATOR_INDEX, then restart")
+
     logs_p = sub.add_parser("logs", help="Tail docker logs for a single node")
     logs_p.add_argument("node", help="Node name (e.g., validator-0)")
 
@@ -357,6 +483,18 @@ def main() -> int:
         return 0
     if args.cmd == "set-image":
         cmd_set_image(nodes, args.user, args.image)
+        return 0
+
+    if args.cmd == "push-genesis":
+        cmd_push_genesis(nodes, args.user, Path(args.file))
+        return 0
+
+    if args.cmd == "set-bootstrap-peers":
+        cmd_set_bootstrap_peers(nodes, args.user, args.port)
+        return 0
+
+    if args.cmd == "reset-consensus-key":
+        cmd_reset_consensus_key(nodes, args.user)
         return 0
 
     raise RuntimeError("Unhandled command")
