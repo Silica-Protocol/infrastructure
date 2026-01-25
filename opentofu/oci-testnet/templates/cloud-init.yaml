@@ -122,6 +122,8 @@ write_files:
       folding_at_home = 1.0
       boinc = 1.2
 
+${caddy_write_files}
+
   - path: /opt/silica/docker-compose.yml
     content: |
       version: '3.8'
@@ -132,7 +134,6 @@ write_files:
           restart: unless-stopped
           command: ["validator", "--config", "/config/validator.toml"]
           ports:
-            - "8545:8545"
             - "30300:30300/tcp"
             - "30300:30300/udp"
           volumes:
@@ -150,6 +151,8 @@ write_files:
             timeout: 10s
             retries: 3
             start_period: 180s
+
+      ${caddy_compose_service}
 
   - path: /etc/systemd/system/silica.service
     content: |
@@ -180,7 +183,7 @@ write_files:
       ufw default allow outgoing
 
       ufw limit 22/tcp
-      ufw allow 8545/tcp
+      ${ufw_api_rules}
       ufw allow 30300/tcp
       ufw allow 30300/udp
 
@@ -189,6 +192,7 @@ write_files:
 runcmd:
   - mkdir -p /etc/silica
   - mkdir -p /opt/silica/{data,config}
+  - mkdir -p /opt/silica/caddy/{data,config}
   - mkdir -p /opt/silica/data/{keys,storage}
   # Set ownership to UID 1000 (silica user inside container)
   - chown -R 1000:1000 /opt/silica/data
@@ -201,7 +205,7 @@ runcmd:
   - systemctl enable --now docker
 
   - |
-    set -euo pipefail
+    set -e
     if ! command -v docker-compose >/dev/null 2>&1; then
       apt-get update
       apt-get install -y docker-compose
@@ -211,7 +215,7 @@ runcmd:
 
   # Ensure keystore password exists (required by the node)
   - |
-    set -euo pipefail
+    set -e
     if ! grep -q '^SILICA_KEYSTORE_PASSWORD=' /etc/silica/keystore.env; then
       echo 'SILICA_KEYSTORE_PASSWORD=' >> /etc/silica/keystore.env
     fi

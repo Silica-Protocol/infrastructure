@@ -197,7 +197,7 @@
         176,
         109
       ],
-      "network_address": "127.0.0.1:30300"
+      "network_address": "168.138.110.12:30300"
     },
     {
       "address": "0xbe19db018b2c57dce64fb3a3f8cee8c9b783f3fd",
@@ -236,7 +236,7 @@
         156,
         128
       ],
-      "network_address": "127.0.0.1:30301"
+      "network_address": "152.69.175.75:30300"
     },
     {
       "address": "0xdbd734f47ed7907ceea42ff390c5b1aaff9d83da",
@@ -275,7 +275,7 @@
         151,
         236
       ],
-      "network_address": "127.0.0.1:30302"
+      "network_address": "161.33.238.102:30300"
     },
     {
       "address": "0x8d47cd084423f3701d7ef1253660d90e535a3dc5",
@@ -314,7 +314,7 @@
         9,
         236
       ],
-      "network_address": "127.0.0.1:30303"
+      "network_address": "161.33.229.145:30300"
     }
   ],
   "bootstrap_accounts": [

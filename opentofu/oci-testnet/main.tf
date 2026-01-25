@@ -71,6 +71,12 @@ variable "container_image" {
   type        = string
 }
 
+  variable "rpc_domain" {
+    description = "Public DNS hostname used for the primary validator (validator-0) HTTPS RPC endpoint (Caddy)."
+    type        = string
+    default     = "testnet.silicaprotocol.network"
+  }
+
 # OCI auth/config
 variable "oci_tenancy_ocid" {
   description = "Oracle Cloud tenancy OCID"
@@ -217,6 +223,26 @@ resource "oci_core_security_list" "validators" {
     }
   }
 
+    # HTTP (Let's Encrypt / redirects)
+    ingress_security_rules {
+      protocol = "6" # TCP
+      source   = "0.0.0.0/0"
+      tcp_options {
+        min = 80
+        max = 80
+      }
+    }
+
+    # HTTPS (primary validator RPC via Caddy)
+    ingress_security_rules {
+      protocol = "6" # TCP
+      source   = "0.0.0.0/0"
+      tcp_options {
+        min = 443
+        max = 443
+      }
+    }
+
   ingress_security_rules {
     protocol = "6" # TCP
     source   = "0.0.0.0/0"
@@ -299,10 +325,58 @@ resource "oci_core_instance" "validators" {
       node_name       = each.key
       node_index      = each.value.index
       environment     = var.environment
-      domain          = ""
+      rpc_domain      = var.rpc_domain
       ssh_public_key  = local.ssh_public_key
       container_image = var.container_image
+
+      # Only validator-0 should terminate TLS for the shared hostname to avoid ACME conflicts.
+      caddy_write_files = each.value.index == 0 ? (<<-EOT
+  - path: /opt/silica/caddy/Caddyfile
+    permissions: '0644'
+    owner: root:root
+    content: |
+      {
+        # Optional: set a contact email for Let's Encrypt.
+        # email you@example.com
+      }
+
+      ${var.rpc_domain} {
+        encode gzip
+        reverse_proxy validator:8545
+      }
+EOT
+) : ""
+
+      caddy_compose_service = each.value.index == 0 ? (<<-EOT
+        caddy:
+          image: caddy:2.8
+          container_name: silica-caddy
+          restart: unless-stopped
+          ports:
+            - "80:80"
+            - "443:443"
+          volumes:
+            - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+            - ./caddy/data:/data
+            - ./caddy/config:/config
+          depends_on:
+            - validator
+EOT
+) : ""
+
+      ufw_api_rules = each.value.index == 0 ? (<<-EOT
+      ufw allow 80/tcp
+      ufw allow 443/tcp
+EOT
+) : ""
     }))
+  }
+
+  lifecycle {
+    # OCI instances cannot apply updated cloud-init to existing VMs.
+    # Ignoring user_data changes prevents forced replacement (and public IP churn)
+    # during iterative infra tweaks.
+    ignore_changes = [metadata["user_data"]]
   }
 
   freeform_tags = local.common_tags

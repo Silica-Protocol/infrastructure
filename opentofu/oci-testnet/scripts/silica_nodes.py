@@ -303,7 +303,7 @@ def cmd_set_bootstrap_peers(nodes: List[Node], user: str, port: int) -> None:
         print(f"==> configuring bootstrap peers for {n.name} ({n.public_ip})")
         peers_py = "[" + ", ".join(repr(p) for p in peers) + "]"
         remote = f"""
-set -euo pipefail
+    set -e
 
 cfg=/opt/silica/config/validator.toml
 sudo test -f "$cfg"
@@ -347,24 +347,24 @@ def cmd_reset_consensus_key(nodes: List[Node], user: str) -> None:
         # Ensure SILICA_VALIDATOR_INDEX is set in docker-compose.yml so the node regenerates
         # deterministic genesis keys when the file is missing.
         remote = f"""
-set -euo pipefail
+    set -e
 cd /opt/silica
 
 sudo test -f docker-compose.yml
 
 # Ensure env vars exist in compose file (assumes default template indentation)
 if ! sudo grep -q 'SILICA_NETWORK_MODE=' docker-compose.yml; then
-    sudo sed -i '/- RUST_BACKTRACE=1/a            - SILICA_NETWORK_MODE=testnet' docker-compose.yml
+    sudo sed -i '/- RUST_BACKTRACE=1/a\\      - SILICA_NETWORK_MODE=testnet' docker-compose.yml
 fi
 
 if sudo grep -q 'SILICA_VALIDATOR_INDEX=' docker-compose.yml; then
-    sudo sed -i 's/^\(\s*-\s*SILICA_VALIDATOR_INDEX=\).*/\1{idx}/' docker-compose.yml
+    sudo sed -i 's/^\\([[:space:]]*-[[:space:]]*SILICA_VALIDATOR_INDEX=\\).*/\\1{idx}/' docker-compose.yml
 else
     # Insert index after network mode line if present, else after backtrace.
     if sudo grep -q 'SILICA_NETWORK_MODE=testnet' docker-compose.yml; then
-        sudo sed -i '/SILICA_NETWORK_MODE=testnet/a            - SILICA_VALIDATOR_INDEX={idx}' docker-compose.yml
+        sudo sed -i '/SILICA_NETWORK_MODE=testnet/a\\      - SILICA_VALIDATOR_INDEX={idx}' docker-compose.yml
     else
-        sudo sed -i '/- RUST_BACKTRACE=1/a            - SILICA_VALIDATOR_INDEX={idx}' docker-compose.yml
+        sudo sed -i '/- RUST_BACKTRACE=1/a\\      - SILICA_VALIDATOR_INDEX={idx}' docker-compose.yml
     fi
 fi
 
